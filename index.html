@@ -1,0 +1,350 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8"/>
+<title>MOS(Motion & Orientation Sensor)</title>
+<script type="text/javascript" src="https://code.jquery.com/jquery-2.2.4.min.js"></script>
+<link href="https://maxcdn.bootstrapcdn.com/bootstrap/4.3.0/css/bootstrap.min.css" rel="stylesheet"/>
+<script src="https://maxcdn.bootstrapcdn.com/bootstrap/4.3.0/js/bootstrap.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/2.9.3/Chart.min.js"></script>
+<meta name="viewport" content="width=device-width,initial-scale=1"/>
+
+<link rel="shortcut icon" href="./imgs/icon.png" type="image/png"/>
+<link rel="icon" href="./imgs/icon.png" type="image/png"/>
+<link rel="apple-touch-icon" href="./imgs/icon.png"/>
+
+<meta name="viewport" content="width=device-width,initial-scale=1"/>
+<meta name="apple-mobile-web-app-capable" content="yes"/>
+<meta name="apple-mobile-web-app-status-bar-style" content="black"/>
+<meta name="apple-mobile-web-app-title" content="MOS"/>
+
+<!-- // OGP tags -->
+<meta property="og:title" content="MOS"/>
+<meta property="og:type" content="website"/>
+<meta property="og:url" content="https://dotnsf.github.io/mos/"/>
+<meta property="og:image" content="https://dotnsf.github.io/mos/imgs/icon.png"/>
+<meta property="og:site_name" content="MOS"/>
+<meta property="og:description" content="MOS : Mostion & Orientation Sensor"/>
+<!-- OGP tags // -->
+
+<!-- // Twitter Card -->
+<meta property="twitter:card" content="summary"/>
+<meta property="twitter:site" content="@dotnsf"/>
+<meta property="twitter:creator" content="@dotnsf"/>
+<meta property="twitter:url" content="https://dotnsf.github.io/mos/"/>
+<meta property="twitter:image" content="https://dotnsf.github.io/mos/imgs/icon.png"/>
+<meta property="twitter:title" content="MOS"/>
+<meta property="twitter:description" content="MOS : Mostion & Orientation Sensor"/>
+<!-- Twitter Card // -->
+
+<style type="text/css">
+html, body{
+  text-align: center;
+  background-color: #fafafa;
+  font-size: 20px;
+  color: #333;
+}
+body{
+  background-color: #ffffcc;
+}
+#mycanvas{
+  border: 1px solid #333;
+  background-color: #ffcccc;
+}
+</style>
+</head>
+<body>
+
+<div class="container">
+  <canvas id="mychart1" style="position:relative; width:90%; height: 30%;"></canvas>
+  <canvas id="mychart2" style="position:relative; width:90%; height: 30%;"></canvas>
+
+  <div id="cdiv">
+    <canvas width="80%" height="30%" id="mycanvas"></canvas>
+  </div>
+</div>
+
+<script>
+var isTouch = false;
+var motionData = [];
+var orientationData = [];
+
+//. iOS 13 対応 : https://bagelee.com/webar-vr/ios13-webar-webvr/
+//.             : https://qiita.com/nakakaz11/items/a9be602874bd54819a18
+function ClickRequestDeviceSensor(){
+  //. ユーザーに「許可」を明示させる必要がある
+  DeviceOrientationEvent.requestPermission().then( function( response ){
+    if( response === 'granted' ){
+      window.addEventListener( "deviceorientation", deviceOrientation );
+      $('#sensorrequest').css( 'display', 'none' );
+      $('#cdiv').css( 'display', 'block' );
+    }
+  }).catch( function( e ){
+    console.log( e );
+  });
+
+  DeviceMotionEvent.requestPermission().then( function( response ){
+    if( response === 'granted' ){
+      window.addEventListener( "devicemotion", deviceMotion );
+      $('#sensorrequest').css( 'display', 'none' );
+      $('#cdiv').css( 'display', 'block' );
+    }
+  }).catch( function( e ){
+    console.log( e );
+  });
+}
+
+$(function(){
+  init();
+});
+
+function init(){
+  var canvas = document.getElementById( 'mycanvas' );
+  if( !canvas || !canvas.getContext ){
+    return false;
+  }
+
+  if( window.DeviceOrientationEvent ){
+    //. iOS 13 対応 : https://bagelee.com/webar-vr/ios13-webar-webvr/
+    //.             : https://qiita.com/nakakaz11/items/a9be602874bd54819a18
+    if( DeviceOrientationEvent.requestPermission && typeof DeviceOrientationEvent.requestPermission === 'function' ){
+      /*
+      DeviceOrientationEvent.requestPermission().then( function( response ){
+        if( response === 'granted' ){
+          window.addEventListener( "deviceorientation", deviceOrientation );
+        }
+      }).catch( function( e ){
+        console.log( e );
+      });
+      */
+      $('#cdiv').css( 'display', 'none' );
+      var banner = '<div id="sensorrequest" onclick="ClickRequestDeviceSensor();" style="z-index:1; position:absolute; width:100%; background-color:#000; color:#fff;><p style="padding:10px;">センサーの有効化</p></div>';
+      $('body').prepend( banner );
+    }else{
+      window.addEventListener( "deviceorientation", deviceOrientation );
+    }
+  }
+  if( window.DeviceMotionEvent ){
+    //. iOS 13 対応 : https://bagelee.com/webar-vr/ios13-webar-webvr/
+    //.             : https://qiita.com/nakakaz11/items/a9be602874bd54819a18
+    if( DeviceMotionEvent.requestPermission && typeof DeviceMotionEvent.requestPermission === 'function' ){
+      /*
+      DeviceMotionEvent.requestPermission().then( function( response ){
+        if( response === 'granted' ){
+          window.addEventListener( "devicemotion", deviceMotion );
+        }
+      }).catch( function( e ){
+        console.log( e );
+      });
+      */
+    }else{
+      window.addEventListener( "devicemotion", deviceMotion );
+    }
+  }
+
+  if( window.TouchEvent ){
+    canvas.addEventListener( "touchstart", touchStart );
+    canvas.addEventListener( "touchend", touchEnd );
+  }
+
+  //. リサイズ時に Canvas サイズを変更する
+  $(window).on( 'load resize', function(){
+    resized();
+  });
+  resized();
+
+  //. スクロール禁止
+  /*
+  $(window).on('touchmove.noScroll', function( e ){
+    e.preventDefault();
+  });
+  */
+  var movefun = function( event ){
+    event.preventDefault();
+  }
+  window.addEventListener( 'touchmove', movefun, { passive: false } );
+}
+
+var canvas_width = 0;
+var canvas_height = 0;
+function resized(){
+  var browserWidth = window.innerWidth;
+  var browserHeight = window.innerHeight;
+  var canvas = document.getElementById( 'mycanvas' );
+  if( canvas && canvas.getContext ){
+    canvas.width = canvas_width = browserWidth * 0.8;
+    canvas.height = canvas_height = browserHeight * 0.4;
+  }
+}
+
+function touchStart( e ){
+  e.preventDefault();
+  //var obj = e.changedTouches[0];
+  //var touchY = obj.pageY;
+  isTouch = true;
+  motionData = [];
+  orientationData = [];
+}
+
+function touchEnd( e ){
+  e.preventDefault();
+  isTouch = false;
+
+  if( motionData && motionData.length > 0 ){
+    //. グラフ描画
+    var labels = [];
+    var x_data = [];
+    var y_data = [];
+    var z_data = [];
+    for( var i = 0; i < motionData.length; i ++ ){
+      var mot = motionData[i];
+      labels.push( '' + i );
+      x_data.push( mot['ac'].x );
+      y_data.push( mot['ac'].y );
+      z_data.push( mot['ac'].z );
+    }
+
+    var ctx1 = document.getElementById( 'mychart1' );
+    var myChart1 = new Chart( ctx1, {
+      type: 'line',
+      data: {
+        labels: labels,
+        datasets: [{
+          label: 'x',
+          borderWidth: 1,
+          backgroundColor: '#ffaaaa',
+          borderColor: '#ff5555',
+          fill: false,
+          data: x_data
+        },
+        {
+          label: 'y',
+          borderWidth: 1,
+          backgroundColor: '#aaffaa',
+          borderColor: '#55ff55',
+          fill: false,
+          data: y_data
+        },
+        {
+          label: 'z',
+          borderWidth: 1,
+          backgroundColor: '#aaaaff',
+          borderColor: '#5555ff',
+          fill: false,
+          data: z_data
+        }]
+      },
+      options: {
+        title: {
+          display: false,
+          text: '三軸加速度',
+          padding: 3
+        },
+        legend: {
+          labels: {
+            boxWidth: 30,
+            padding: 20
+          },
+          display: true
+        },
+        tooltips: {
+          mode: 'label'
+        }
+      }
+    });
+
+    motionData = [];
+  }
+
+  if( orientationData && orientationData.length > 0 ){
+    //. グラフ描画
+    var labels = [];
+    var fb_data = [];
+    var lr_data = [];
+    var dir_data = [];
+    for( var i = 0; i < orientationData.length; i ++ ){
+      var ori = orientationData[i];
+      labels.push( '' + i );
+      fb_data.push( ori['fb'] );
+      lr_data.push( ori['lr'] );
+      dir_data.push( ori['dir'] );
+    }
+
+    var ctx2 = document.getElementById( 'mychart2' );
+    var myChart2 = new Chart( ctx2, {
+      type: 'line',
+      data: {
+        labels: labels,
+        datasets: [{
+          label: '前後',
+          borderWidth: 1,
+          backgroundColor: '#ffaaff',
+          borderColor: '#ff55ff',
+          fill: false,
+          data: fb_data
+        },
+        {
+          label: '左右',
+          borderWidth: 1,
+          backgroundColor: '#aaffff',
+          borderColor: '#55ffff',
+          fill: false,
+          data: lr_data
+        }]
+      },
+      options: {
+        title: {
+          display: false,
+          text: '前後左右角度',
+          padding: 3
+        },
+        legend: {
+          labels: {
+            boxWidth: 30,
+            padding: 20
+          },
+          display: true
+        },
+        tooltips: {
+          mode: 'label'
+        }
+      }
+    });
+
+    orientationData = [];
+  }
+}
+
+function deviceMotion( e ){
+  e.preventDefault();
+  if( isTouch ){
+    var ac = e.acceleration;
+    var acg = e.accelerationIncludingGravity;
+    var rot = e.rotationRate;
+
+    var motion = {};
+    motion['ac'] = ac;
+    motion['acg'] = acg;
+    motion['rot'] = rot;
+
+    motionData.push( motion );
+  }
+}
+function deviceOrientation( e ){
+  e.preventDefault();
+  if( isTouch ){
+    var gamma = e.gamma; //. Left/Right
+    var beta = e.beta;   //. Front/Back
+    var alpha = e.alpha; //. Direction
+
+    var ori = {};
+    ori['dir'] = alpha;
+    ori['fb'] = beta;
+    ori['lr'] = gamma;
+
+    orientationData.push( ori );
+  }
+}
+</script>
+</body>
+</html>
